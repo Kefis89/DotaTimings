@@ -5,6 +5,7 @@
 
 ## Файлы
 - `index.html` — всё приложение
+- `sounds/*.wav` — звуки оповещений (генерируются `tools/make_sounds.py`)
 - `manifest.json`, `icon-192.png`, `icon-512.png` — установка на домашний экран
 - `sw.js` — офлайн-режим
 

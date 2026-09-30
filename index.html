@@ -219,6 +219,7 @@ dialog { max-height: 88vh; overflow-y: auto; }
   width: 36px; height: 36px; display: grid; place-items: center; color: var(--c);
 }
 .snd-row .play svg, .voice-row .play svg { width: 14px; height: 14px; }
+.snd-row .play:disabled, .voice-row .play:disabled { opacity: .35; }
 .voice-row .play { border: 1px solid var(--line); background: transparent; border-radius: 999px; width: 36px; height: 36px; display: grid; place-items: center; color: var(--text); flex: none; }
 .snd-row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--gold); }
 dialog::backdrop { background: rgba(10, 16, 24, .55); }
@@ -426,40 +427,26 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   function fmtLeft(sec) { return fmt(Math.ceil(sec - 0.001)); }
 
   // ---------- Звук ----------
-  var audioCtx = null, voice = null, master = null, wet = null, noiseBuf = null;
-  // iPhone: Web Audio глушится переключателем «без звука», а обычный <audio> — нет.
-  // Пока играет тихий зацикленный <audio>, звуки Web Audio идут по каналу «медиа».
-  var IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var keepAlive = null;
-  function silentWavUrl() {
-    var n = 8000, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
-    var str = function (o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt ');
-    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-    str(36, 'data'); v.setUint32(40, n * 2, true);
-    for (var i = 0; i < n; i++) v.setInt16(44 + i * 2, i % 2 ? 1 : -1, true); // почти тишина, но не нули
-    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-  }
-  function resumeAudio() {
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
-    try {
-      if (audioCtx && audioCtx.state !== 'running') audioCtx.resume();
-    } catch (e) {}
-    if (!IS_IOS) return;
-    try {
-      if (!keepAlive) {
-        keepAlive = new Audio(silentWavUrl());
-        keepAlive.loop = true; keepAlive.setAttribute('playsinline', '');
-      }
-      if (keepAlive.paused) { var p = keepAlive.play(); if (p && p.catch) p.catch(function () {}); }
-    } catch (e) {}
-  }
+  // Звуки — обычные файлы из sounds/ через <audio>: на iPhone они идут тем же каналом, что и голос,
+  // и не глушатся переключателем «без звука».
+  var voice = null;
+  var SOUND_LEN = { bounty: 700, power: 1100, wisdom: 1200, tormentor: 1300 }; // через сколько мс после звука говорить
+  var clips = {}, audioUnlocked = false;
   function unlockAudio() {
-    try {
-      if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); setupAudio(); }
-    } catch (e) {}
-    resumeAudio();
+    if (!audioUnlocked) {
+      audioUnlocked = true;
+      // iOS разрешает играть элемент из кода, только если он уже стартовал по касанию, поэтому «прогреваем» все
+      Object.keys(SOUND_LEN).forEach(function (id) {
+        try {
+          var c = clips[id] = new Audio('sounds/' + id + '.wav');
+          c.preload = 'auto'; c.muted = true;
+          var p = c.play();
+          if (p && p.then) p.then(function () {
+            if (c.muted) { c.pause(); c.currentTime = 0; c.muted = false; } // если не успели включить звук из playSound
+          }).catch(function () { c.muted = false; audioUnlocked = false; });
+        } catch (e) { audioUnlocked = false; }
+      });
+    }
     try {
       if ('speechSynthesis' in window) {
         var u = new SpeechSynthesisUtterance(' ');
@@ -502,107 +489,12 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
     } catch (e) {}
   }
 
-  // ---------- Звуки: синтез с реверберацией, файлов не нужно ----------
-  function setupAudio() {
-    var comp = audioCtx.createDynamicsCompressor();
-    comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4;
-    comp.attack.value = 0.003; comp.release.value = 0.25;
-    comp.connect(audioCtx.destination);
-    master = audioCtx.createGain(); master.gain.value = 0.9; master.connect(comp);
-    // «комната»: импульсный отклик из затухающего шума
-    var r = audioCtx.sampleRate, n = Math.floor(r * 2.2), ir = audioCtx.createBuffer(2, n, r);
-    for (var ch = 0; ch < 2; ch++) {
-      var d = ir.getChannelData(ch);
-      for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2);
-    }
-    var conv = audioCtx.createConvolver(); conv.buffer = ir;
-    var damp = audioCtx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 5000;
-    wet = audioCtx.createGain(); wet.gain.value = 0.5;
-    wet.connect(conv); conv.connect(damp); damp.connect(comp);
-    noiseBuf = audioCtx.createBuffer(1, r, r);
-    var nd = noiseBuf.getChannelData(0);
-    for (var j = 0; j < r; j++) nd[j] = Math.random() * 2 - 1;
-  }
-  function route(node, send) {
-    node.connect(master);
-    var g = audioCtx.createGain(); g.gain.value = send; node.connect(g); g.connect(wet);
-  }
-  // одна синусоидальная «мода» с мягкой атакой и экспоненциальным затуханием
-  function partial(t, f, start, dur, vol, send, fEnd) {
-    if (f > 15000) return;
-    var o = audioCtx.createOscillator(), g = audioCtx.createGain(), a = t + start;
-    o.type = 'sine'; o.frequency.setValueAtTime(f, a);
-    if (fEnd) o.frequency.exponentialRampToValueAtTime(fEnd, a + dur * 0.6);
-    g.gain.setValueAtTime(0.0001, a);
-    g.gain.linearRampToValueAtTime(vol, a + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, a + dur);
-    o.connect(g); route(g, send == null ? 0.3 : send);
-    o.start(a); o.stop(a + dur + 0.05);
-  }
-  // отфильтрованный шум (шорох, всплеск, удар)
-  function noise(t, start, dur, vol, type, f1, f2, q, att, send) {
-    var src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain(), a = t + start;
-    src.buffer = noiseBuf; src.loop = true;
-    f.type = type; f.Q.value = q;
-    f.frequency.setValueAtTime(f1, a); f.frequency.exponentialRampToValueAtTime(f2, a + dur);
-    g.gain.setValueAtTime(0.0001, a);
-    g.gain.linearRampToValueAtTime(vol, a + att);
-    g.gain.exponentialRampToValueAtTime(0.0001, a + dur);
-    src.connect(f); f.connect(g); route(g, send == null ? 0.3 : send);
-    src.start(a); src.stop(a + dur + 0.05);
-  }
-  // колокол: неравномерный набор обертонов, верхние гаснут быстрее
-  var BELL = [[0.5, 0.7], [1, 1], [1.183, 0.55], [1.506, 0.45], [2, 0.35], [2.514, 0.25], [2.662, 0.2], [3.011, 0.15], [4.166, 0.08], [5.433, 0.05]];
-  function bell(t, f0, start, vol, len, send) {
-    BELL.forEach(function (m, i) {
-      partial(t, f0 * m[0] * (1 + (Math.random() - 0.5) * 0.003), start, len / (1 + i * 0.5), vol * m[1] * 0.3, send);
-    });
-  }
-  // звон монеты
-  function clink(t, f0, start, vol) {
-    [[1, 1, 0.5], [2.32, 0.55, 0.32], [4.25, 0.35, 0.2], [6.63, 0.2, 0.12]].forEach(function (m) {
-      partial(t, f0 * m[0], start, m[2], vol * m[1], 0.25);
-    });
-    noise(t, start, 0.025, vol * 0.5, 'highpass', 7000, 7000, 0.7, 0.002, 0.1);
-  }
-  // пузырёк: короткий тон с поднимающейся высотой, как у настоящих пузырей
-  function bubble(t, start, f, vol) { partial(t, f, start, 0.1, vol, 0.4, f * 1.9); }
-  // щипок, как у калимбы
-  function pluck(t, f, start, vol) {
-    partial(t, f, start, 1.4, vol, 0.5);
-    partial(t, f * 2.01, start, 0.4, vol * 0.2, 0.5);
-    partial(t, f * 4.2, start, 0.08, vol * 0.12, 0.3);
-  }
-
-  var SOUNDS = {
-    bounty: function (t) {      // пара монет
-      clink(t, 2350, 0, 0.28); clink(t, 2720, 0.12, 0.22); clink(t, 2530, 0.21, 0.14);
-    },
-    power: function (t) {       // двойной металлический удар «клинг-кланг», как по наковальне
-      [[0, 466], [0.17, 349]].forEach(function (h, k) {
-        var st = h[0], f0 = h[1], v = k ? 0.85 : 1;
-        noise(t, st, 0.05, 0.35 * v, 'bandpass', 3200, 1800, 1.2, 0.001, 0.15);   // звонкий щелчок удара
-        noise(t, st, 0.08, 0.25 * v, 'lowpass', 900, 300, 0.8, 0.002, 0.15);      // тело удара
-        [[1, 1, 0.9], [2.756, 0.55, 0.5], [5.404, 0.28, 0.28], [8.933, 0.12, 0.14]].forEach(function (m) {
-          partial(t, f0 * m[0], st, m[2], 0.5 * m[1] * v, 0.3);
-          partial(t, (f0 + 2.5) * m[0], st + 0.003, m[2] * 0.85, 0.22 * m[1] * v, 0.3);  // биение — «металл»
-        });
-      });
-    },
-    wisdom: function (t) {      // тихое мелодичное арпеджио
-      [[784, 0], [988, 0.12], [1175, 0.24], [1568, 0.38]].forEach(function (n) { pluck(t, n[0], n[1], 0.28); });
-    },
-    tormentor: function (t) {   // храмовый колокол
-      noise(t, 0, 0.08, 0.25, 'lowpass', 900, 300, 0.7, 0.003, 0.3);
-      bell(t, 196, 0, 1.3, 3.5, 0.45);
-    }
-  };
-  var SOUND_LEN = { bounty: 700, power: 1100, wisdom: 1200, tormentor: 1300 };
   function playSound(id) {
-    if (!audioCtx || !SOUNDS[id]) return;
+    var c = clips[id];
+    if (!c) return;
     try {
-      resumeAudio();
-      SOUNDS[id](audioCtx.currentTime + 0.03);
+      c.muted = false; c.currentTime = 0;
+      var p = c.play(); if (p && p.catch) p.catch(function () {});
     } catch (e) {}
   }
   function soundOn(id) { return !(state.settings.snd && state.settings.snd[id] === false); }
@@ -615,21 +507,6 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   }
   function spawnAlert(ev, s) {
     if (!state.settings.muted && state.settings.beep && soundOn(ev.id)) playSound(look(ev, s).sound);
-  }
-  function beep() {
-    if (!state.settings.beep || !audioCtx) return;
-    try {
-      var t0 = audioCtx.currentTime;
-      [0, 0.18].forEach(function (d) {
-        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
-        o.type = 'sine'; o.frequency.value = 880;
-        g.gain.setValueAtTime(0.0001, t0 + d);
-        g.gain.exponentialRampToValueAtTime(0.3, t0 + d + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.14);
-        o.connect(g).connect(audioCtx.destination);
-        o.start(t0 + d); o.stop(t0 + d + 0.16);
-      });
-    } catch (e) {}
   }
   function secWord(n) {
     var a = n % 10, b = n % 100;
@@ -646,7 +523,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   }
   function releaseWake() { try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null; }
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') { requestWake(); resumeAudio(); lastT = null; render(); }
+    if (document.visibilityState === 'visible') { requestWake(); lastT = null; render(); }
   });
 
   // ---------- DOM ----------
@@ -912,6 +789,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   }
   $('voiceSel').addEventListener('change', function () {
     state.settings.voiceName = $('voiceSel').value; save(); pickVoice();
+    if (state.settings.muted) return;
     unlockAudio(); speak('Руна через тридцать секунд', true);
   });
   $('voiceTest').addEventListener('click', function () {
@@ -932,6 +810,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
       $('snd-' + ev.id).checked = soundOn(ev.id);
     });
     $('sndTitle').textContent = 'Оповещения за ' + state.settings.warn + ' ' + secWord(state.settings.warn);
+    dlg.querySelectorAll('.play').forEach(function (b) { b.disabled = !!state.settings.muted; }); // звук выключен кнопкой мегафона
   }
   var PLAY = '<svg viewBox="0 0 14 14" fill="currentColor"><path d="M3 1.5l9 5.5-9 5.5z"/></svg>';
   EVENTS.forEach(function (ev) {
@@ -951,7 +830,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
     cb.addEventListener('change', function () {
       if (!state.settings.snd) state.settings.snd = {};
       state.settings.snd[ev.id] = cb.checked; save();
-      if (cb.checked) preview();
+      if (cb.checked && !state.settings.muted) preview();
     });
     $('sndToggles').appendChild(row);
   });
@@ -991,7 +870,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   });
   // iOS считает жестом для звука только touchend/click, а не pointerdown; после блокировки экрана контекст надо будить снова
   ['touchend', 'click'].forEach(function (ev) {
-    document.addEventListener(ev, function () { if (audioCtx) resumeAudio(); else unlockAudio(); }, true);
+    document.addEventListener(ev, function () { if (!audioUnlocked) unlockAudio(); }, true);
   });
 
   // ---------- Запуск ----------
