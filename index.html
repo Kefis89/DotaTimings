@@ -108,7 +108,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .strip > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--day) 40%, transparent), var(--day)); }
 .strip.night > i { background: linear-gradient(90deg, color-mix(in srgb, var(--night) 40%, transparent), var(--night)); }
 
-.sync { display: grid; grid-template-columns: 1fr 1fr 1.3fr 1fr 1fr; gap: 6px; }
+.sync { display: grid; grid-template-columns: .6fr 1fr 1fr 1.3fr 1fr 1fr; gap: 6px; }
 .sync button {
   border: 0; background: var(--btn); border-radius: 10px; padding: 11px 0;
   font-family: var(--display); font-weight: 600; font-size: 19px; font-variant-numeric: tabular-nums;
@@ -117,6 +117,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .sync button:active { filter: brightness(.9); }
 .sync .pause { background: var(--text); color: var(--bg); display: grid; place-items: center; }
 .sync .pause svg { width: 20px; height: 20px; }
+.sync .mute { display: grid; place-items: center; color: var(--muted); }
+.sync .mute svg { width: 22px; height: 22px; }
+.sync .mute .ko { stroke: var(--btn); }
+.sync .mute[aria-pressed="true"] { background: var(--urgent); color: #fff; }
+.sync .mute[aria-pressed="true"] .ko { stroke: var(--urgent); }
 
 .list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; flex: 1; }
 .card {
@@ -262,6 +267,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
     <div class="strip" id="strip"><i></i></div>
 
     <div class="sync" role="group" aria-label="Подстройка времени">
+      <button class="mute" id="muteBtn" aria-label="Выключить все звуки" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 9h4l9-5v16l-9-5H3z" fill="currentColor"/><path d="M7.5 15.5L9 21h2.5L10 16z" fill="currentColor"/><path class="ko" d="M4 3.5L21 20.5" stroke-width="5" stroke-linecap="round"/><path d="M4 3.5L21 20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <button data-adj="-10">−10с</button>
       <button data-adj="-1">−1с</button>
       <button class="pause" id="pauseBtn" aria-label="Пауза"></button>
@@ -421,11 +427,39 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
 
   // ---------- Звук ----------
   var audioCtx = null, voice = null, master = null, wet = null, noiseBuf = null;
+  // iPhone: Web Audio глушится переключателем «без звука», а обычный <audio> — нет.
+  // Пока играет тихий зацикленный <audio>, звуки Web Audio идут по каналу «медиа».
+  var IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var keepAlive = null;
+  function silentWavUrl() {
+    var n = 8000, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    var str = function (o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) v.setInt16(44 + i * 2, i % 2 ? 1 : -1, true); // почти тишина, но не нули
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  function resumeAudio() {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    try {
+      if (audioCtx && audioCtx.state !== 'running') audioCtx.resume();
+    } catch (e) {}
+    if (!IS_IOS) return;
+    try {
+      if (!keepAlive) {
+        keepAlive = new Audio(silentWavUrl());
+        keepAlive.loop = true; keepAlive.setAttribute('playsinline', '');
+      }
+      if (keepAlive.paused) { var p = keepAlive.play(); if (p && p.catch) p.catch(function () {}); }
+    } catch (e) {}
+  }
   function unlockAudio() {
     try {
       if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); setupAudio(); }
-      if (audioCtx.state === 'suspended') audioCtx.resume();
     } catch (e) {}
+    resumeAudio();
     try {
       if ('speechSynthesis' in window) {
         var u = new SpeechSynthesisUtterance(' ');
@@ -567,20 +601,20 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   function playSound(id) {
     if (!audioCtx || !SOUNDS[id]) return;
     try {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      resumeAudio();
       SOUNDS[id](audioCtx.currentTime + 0.03);
     } catch (e) {}
   }
   function soundOn(id) { return !(state.settings.snd && state.settings.snd[id] === false); }
   function warnAlert(ev, s) {
-    if (!soundOn(ev.id)) return;
+    if (state.settings.muted || !soundOn(ev.id)) return;
     var lk = look(ev, s);
     playSound(lk.sound);
     var w = state.settings.warn;
     setTimeout(function () { speak(lk.say + ' через ' + w + ' ' + secWord(w)); }, SOUND_LEN[lk.sound] || 900);
   }
   function spawnAlert(ev, s) {
-    if (state.settings.beep && soundOn(ev.id)) playSound(look(ev, s).sound);
+    if (!state.settings.muted && state.settings.beep && soundOn(ev.id)) playSound(look(ev, s).sound);
   }
   function beep() {
     if (!state.settings.beep || !audioCtx) return;
@@ -612,7 +646,7 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
   }
   function releaseWake() { try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null; }
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') { requestWake(); lastT = null; render(); }
+    if (document.visibilityState === 'visible') { requestWake(); resumeAudio(); lastT = null; render(); }
   });
 
   // ---------- DOM ----------
@@ -712,6 +746,9 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><rect x="4" y="3" width="4.5" height="14" rx="1"/><rect x="11.5" y="3" width="4.5" height="14" rx="1"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3l12 7-12 7z"/></svg>';
     pb.setAttribute('aria-label', state.ticking ? 'Пауза' : 'Продолжить');
+    var mb = $('muteBtn'), muted = !!state.settings.muted;
+    mb.setAttribute('aria-pressed', String(muted));
+    mb.setAttribute('aria-label', muted ? 'Включить звуки' : 'Выключить все звуки');
 
     // день / ночь
     var isDay = t >= 0 && Math.floor(t / CYCLE) % 2 === 0;
@@ -823,6 +860,11 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
       setGameTime(gameTime() + parseInt(b.getAttribute('data-adj'), 10), state.ticking);
       lastT = null; save(); render();
     });
+  });
+  $('muteBtn').addEventListener('click', function () {
+    state.settings.muted = !state.settings.muted;
+    if (state.settings.muted && 'speechSynthesis' in window) speechSynthesis.cancel(); // обрываем уже начатую фразу
+    save(); render();
   });
   $('pauseBtn').addEventListener('click', function () {
     unlockAudio();
@@ -946,6 +988,10 @@ dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; marg
 
   document.addEventListener('pointerdown', function once() {
     unlockAudio(); document.removeEventListener('pointerdown', once);
+  });
+  // iOS считает жестом для звука только touchend/click, а не pointerdown; после блокировки экрана контекст надо будить снова
+  ['touchend', 'click'].forEach(function (ev) {
+    document.addEventListener(ev, function () { if (audioCtx) resumeAudio(); else unlockAudio(); }, true);
   });
 
   // ---------- Запуск ----------

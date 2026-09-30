@@ -1,5 +1,5 @@
 // При обновлении index.html увеличь номер версии, чтобы телефоны подтянули новую версию.
-const CACHE = 'dota-timer-v13';
+const CACHE = 'dota-timer-v15';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
