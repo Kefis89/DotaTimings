@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#18222d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Таймер рун Dota 2</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --line: #d6dde4;
+  --text: #18222d;
+  --muted: #5d6c7b;
+  --gold: #c08a14;
+  --water: #1f86bb;
+  --power: #b23d6d;
+  --wisdom: #6453d0;
+  --soon: #c98a0c;
+  --urgent: #d2402c;
+  --day: #d99a1c;
+  --night: #3f4f8a;
+  --torment: #1f8f80;
+  --btn: #e2e7ec;
+  --glow: var(--gold);
+  --font: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #18222d; --surface: #212e3b; --line: #2f3f4f; --text: #eef2f5; --muted: #93a3b3;
+    --gold: #e8b53f; --water: #4db3e6; --power: #e0668f; --wisdom: #9a8cf5;
+    --soon: #f0b43a; --urgent: #ff6a52; --day: #f0b43a; --night: #7d8fd8; --btn: #2a3947; --torment: #4fd1bf;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #18222d; --surface: #212e3b; --line: #2f3f4f; --text: #eef2f5; --muted: #93a3b3;
+  --gold: #e8b53f; --water: #4db3e6; --power: #e0668f; --wisdom: #9a8cf5;
+  --soon: #f0b43a; --urgent: #ff6a52; --day: #f0b43a; --night: #7d8fd8; --btn: #2a3947; --torment: #4fd1bf;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); -webkit-text-size-adjust: 100%; }
+body {
+  height: 100%; margin: 0; color: var(--text);
+  background:
+    radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--glow, var(--day)) 28%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  transition: background 2s;
+  font-family: var(--font); font-size: 16px; line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--water); outline-offset: 2px; }
+.app { max-width: 520px; margin: 0 auto; height: 100%; display: flex; flex-direction: column; padding: 12px 16px 16px; }
+[hidden] { display: none !important; }
+
+/* Start screen */
+.start { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; text-align: center; }
+.start h1 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: .02em; margin: 0; color: var(--muted); }
+.start-btn {
+  width: min(68vw, 280px); aspect-ratio: 1; border-radius: 50%;
+  border: 0; background: var(--gold); color: #1b1405;
+  font-family: var(--display); font-weight: 700; font-size: clamp(44px, 14vw, 64px);
+  box-shadow: 0 0 0 10px color-mix(in srgb, var(--gold) 22%, transparent);
+  touch-action: manipulation;
+}
+.start-btn:active { transform: scale(.97); }
+.start p { margin: 0; color: var(--muted); max-width: 30ch; }
+.late { border-top: 1px solid var(--line); padding-top: 18px; width: 100%; max-width: 320px; }
+.late summary { cursor: pointer; color: var(--muted); }
+.late-row { display: flex; gap: 8px; margin-top: 12px; justify-content: center; }
+.late-row input {
+  width: 96px; font-family: var(--display); font-size: 24px; text-align: center;
+  background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 6px;
+}
+
+/* Running screen */
+.run { flex: 1; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.clock-wrap { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.clock {
+  font-family: var(--display); font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: clamp(64px, 22vw, 132px); line-height: .85; letter-spacing: -.01em;
+}
+.clock.paused { color: var(--muted); }
+.cycle { text-align: right; padding-bottom: 6px; white-space: nowrap; }
+.cycle-name { font-family: var(--display); font-weight: 600; font-size: 24px; line-height: 1; }
+.cycle-next { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+:root.is-day { --glow: var(--day); }
+:root.is-night { --glow: var(--night); }
+.cycle-name { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.cycle-name svg { width: 24px; height: 24px; color: var(--glow); }
+.clock { text-shadow: 0 0 36px color-mix(in srgb, var(--glow) 35%, transparent); }
+.strip { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.strip > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--day) 40%, transparent), var(--day)); }
+.strip.night > i { background: linear-gradient(90deg, color-mix(in srgb, var(--night) 40%, transparent), var(--night)); }
+
+.sync { display: grid; grid-template-columns: 1fr 1fr 1.3fr 1fr 1fr; gap: 6px; }
+.sync button {
+  border: 0; background: var(--btn); border-radius: 10px; padding: 11px 0;
+  font-family: var(--display); font-weight: 600; font-size: 19px; font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+}
+.sync button:active { filter: brightness(.9); }
+.sync .pause { background: var(--text); color: var(--bg); display: grid; place-items: center; }
+.sync .pause svg { width: 20px; height: 20px; }
+
+.list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; flex: 1; }
+.card {
+  position: relative; border-radius: 16px; padding: 10px 16px 10px 10px;
+  display: grid; grid-template-columns: 64px 1fr auto; align-items: center; column-gap: clamp(8px, 3vw, 14px);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--c) 16%, var(--surface)) 0%, var(--surface) 55%);
+  border: 1px solid color-mix(in srgb, var(--c) 30%, var(--line));
+  transition: background .4s, border-color .4s;
+}
+.emblem { position: relative; width: 64px; height: 64px; color: var(--c); }
+.emblem .ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+.emblem .ring circle { fill: none; stroke-width: 4; }
+.emblem .ring .track { stroke: color-mix(in srgb, var(--c) 18%, transparent); }
+.emblem .ring .fill { stroke: var(--c); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+.emblem .icon {
+  position: absolute; inset: 9px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 22%, var(--surface)), var(--surface) 75%);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--c) 30%, transparent);
+}
+.emblem .icon svg { width: 30px; height: 30px; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--c) 60%, transparent)); }
+.card-text { min-width: 0; }
+.card-name { font-family: var(--display); font-weight: 600; font-size: clamp(19px, 6.4vw, 27px); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-at { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.card-left {
+  font-family: var(--display); font-weight: 700; font-size: clamp(34px, 11vw, 42px); line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.kill {
+  margin-top: 6px; border: 1px solid var(--c); background: color-mix(in srgb, var(--c) 18%, transparent);
+  color: var(--text); border-radius: 999px; padding: 4px 14px; font-size: 14px; font-weight: 600;
+  touch-action: manipulation;
+}
+.kill.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-weight: 500; }
+.card-left.alive { font-size: 28px; color: var(--c); }
+.confirm-actions { display: flex; gap: 8px; margin-top: 18px; }
+.confirm-actions button { flex: 1; border-radius: 10px; padding: 12px; font-weight: 600; }
+.btn-plain { border: 1px solid var(--line); background: transparent; }
+.btn-danger { border: 0; background: var(--urgent); color: #fff; }
+dialog p { margin: 0; color: var(--muted); }
+.card.soon { border-color: var(--soon); }
+.card.soon .card-left { color: var(--soon); }
+.card.urgent { border-color: var(--urgent); background: linear-gradient(100deg, color-mix(in srgb, var(--urgent) 22%, var(--surface)), var(--surface) 70%); }
+.card.urgent .card-left { color: var(--urgent); }
+.card.urgent .emblem .icon { animation: pulse 1s ease-in-out infinite; }
+.card.just { background: linear-gradient(100deg, color-mix(in srgb, var(--c) 40%, var(--surface)), color-mix(in srgb, var(--c) 12%, var(--surface))); border-color: var(--c); }
+.card.just .card-at { color: var(--text); font-weight: 600; }
+.card.just .emblem .icon { box-shadow: 0 0 28px color-mix(in srgb, var(--c) 70%, transparent); }
+/* цифры «подпрыгивают» каждую секунду при приближении события */
+.card-left { transform-origin: 100% 55%; display: inline-block; will-change: transform; }
+.card-left.pop-soon { animation: popSoon .45s cubic-bezier(.2,.9,.3,1.4); }
+.card-left.pop-urgent { animation: popUrgent .55s cubic-bezier(.2,.9,.3,1.5); }
+.card-left.pop-spawn { animation: popSpawn .9s cubic-bezier(.2,.9,.3,1.3); }
+@keyframes popSoon { 0% { transform: scale(1); } 35% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes popUrgent {
+  0% { transform: scale(1); text-shadow: none; }
+  30% { transform: scale(1.32); text-shadow: 0 0 22px color-mix(in srgb, var(--urgent) 70%, transparent); }
+  100% { transform: scale(1); text-shadow: none; }
+}
+@keyframes popSpawn {
+  0% { transform: scale(.6); opacity: .2; }
+  45% { transform: scale(1.35); opacity: 1; text-shadow: 0 0 26px var(--c); }
+  100% { transform: scale(1); }
+}
+@keyframes pulse { 50% { box-shadow: 0 0 26px color-mix(in srgb, var(--urgent) 70%, transparent); transform: scale(1.06); } }
+.start-emblems { display: flex; gap: 14px; }
+.start-emblems span {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: var(--c);
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 35%, var(--surface)), color-mix(in srgb, var(--c) 8%, var(--surface)) 70%);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--c) 30%, transparent);
+}
+.start-emblems svg { width: 24px; height: 24px; }
+.empty { color: var(--muted); text-align: center; padding: 24px 0; }
+
+.footer { display: flex; gap: 8px; }
+.footer button {
+  flex: 1; border: 1px solid var(--line); background: transparent; border-radius: 10px; padding: 11px 0; font-weight: 500;
+}
+
+/* Settings */
+dialog {
+  width: min(92vw, 440px); border: 0; border-radius: 16px; padding: 20px;
+  background: var(--surface); color: var(--text);
+}
+dialog { max-height: 88vh; overflow-y: auto; }
+.snd-row { display: grid; grid-template-columns: 30px 1fr auto auto; align-items: center; gap: 10px; padding: 6px 0; }
+.snd-row .mini { width: 30px; height: 30px; color: var(--c); display: grid; place-items: center; }
+.snd-row .mini svg { width: 24px; height: 24px; }
+.voice-row select {
+  flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+}
+.voice-row .play, .snd-row .play {
+  border: 1px solid var(--line); background: transparent; border-radius: 999px;
+  width: 36px; height: 36px; display: grid; place-items: center; color: var(--c);
+}
+.snd-row .play svg, .voice-row .play svg { width: 14px; height: 14px; }
+.voice-row .play { border: 1px solid var(--line); background: transparent; border-radius: 999px; width: 36px; height: 36px; display: grid; place-items: center; color: var(--text); flex: none; }
+.snd-row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--gold); }
+dialog::backdrop { background: rgba(10, 16, 24, .55); }
+dialog h2 { font-family: var(--display); font-weight: 600; font-size: 26px; margin: 0 0 12px; }
+.set-group { border-top: 1px solid var(--line); padding: 14px 0 4px; }
+.set-group h3 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
+.row input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--gold); }
+.seg { display: flex; gap: 6px; }
+.seg button {
+  flex: 1; border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 8px 4px;
+  font-family: var(--display); font-size: 18px; font-weight: 600;
+}
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.done { width: 100%; margin-top: 16px; border: 0; border-radius: 10px; padding: 12px; background: var(--gold); color: #1b1405; font-weight: 600; }
+.note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="app is-day" id="app">
+
+  <section class="start" id="startScreen">
+    <h1>Таймер рун Dota 2</h1>
+    <div class="start-emblems" id="startEmblems" aria-hidden="true"></div>
+    <button class="start-btn" id="startBtn">Старт</button>
+    <p>Нажми, когда игровые часы покажут 0:00. Неточность можно поправить кнопками ±1с.</p>
+    <details class="late">
+      <summary>Игра уже идёт?</summary>
+      <div class="late-row">
+        <input id="lateInput" inputmode="numeric" placeholder="12:30" aria-label="Текущее время в игре">
+        <button class="seg-like" id="lateBtn" style="border:0;background:var(--btn);border-radius:10px;padding:0 16px;font-weight:600">Начать отсюда</button>
+      </div>
+    </details>
+  </section>
+
+  <section class="run" id="runScreen" hidden>
+    <div class="clock-wrap">
+      <div class="clock" id="clock">0:00</div>
+      <div class="cycle">
+        <div class="cycle-name" id="cycleName"></div>
+        <div class="cycle-next" id="cycleNext">ночь через 5:00</div>
+      </div>
+    </div>
+    <div class="strip" id="strip"><i></i></div>
+
+    <div class="sync" role="group" aria-label="Подстройка времени">
+      <button data-adj="-10">−10с</button>
+      <button data-adj="-1">−1с</button>
+      <button class="pause" id="pauseBtn" aria-label="Пауза"></button>
+      <button data-adj="1">+1с</button>
+      <button data-adj="10">+10с</button>
+    </div>
+
+    <div class="list" id="list"></div>
+
+    <div class="footer">
+      <button id="settingsBtn">Настройки</button>
+      <button id="resetBtn">Новая игра</button>
+    </div>
+  </section>
+</div>
+
+<dialog id="settings">
+  <h2>Настройки</h2>
+  <div class="set-group">
+    <h3>Предупреждать заранее</h3>
+    <div class="seg" id="warnSeg">
+      <button data-w="15">15с</button>
+      <button data-w="30">30с</button>
+      <button data-w="45">45с</button>
+      <button data-w="60">60с</button>
+    </div>
+  </div>
+  <div class="set-group">
+    <h3>Тема</h3>
+    <div class="seg" id="themeSeg">
+      <button data-t="auto">Как в системе</button>
+      <button data-t="light">Светлая</button>
+      <button data-t="dark">Тёмная</button>
+    </div>
+  </div>
+  <div class="set-group">
+    <h3>Звук</h3>
+    <label class="row">Голосовые подсказки <input type="checkbox" id="optVoice"></label>
+    <div class="row voice-row">
+      <select id="voiceSel" aria-label="Голос"></select>
+      <button class="play" id="voiceTest" aria-label="Прослушать голос"><svg viewBox="0 0 14 14" fill="currentColor"><path d="M3 1.5l9 5.5-9 5.5z"/></svg></button>
+    </div>
+    <p class="note" id="voiceHint"></p>
+    <label class="row"><span>Звук при появлении</span><input type="checkbox" id="optBeep"></label>
+  </div>
+  <div class="set-group">
+    <h3 id="sndTitle">Оповещения за 30 секунд</h3>
+    <div id="sndToggles"></div>
+  </div>
+  <div class="set-group">
+    <h3>Что показывать</h3>
+    <div id="evToggles"></div>
+  </div>
+  <p class="note">Держи телефон на зарядке: экран не будет гаснуть, пока идёт таймер.</p>
+  <button class="done" id="closeSettings">Готово</button>
+</dialog>
+
+<dialog id="confirmDlg">
+  <h2>Новая игра?</h2>
+  <p>Текущий таймер остановится, и ты вернёшься к кнопке «Старт».</p>
+  <div class="confirm-actions">
+    <button class="btn-plain" id="confirmNo">Отмена</button>
+    <button class="btn-danger" id="confirmYes">Начать заново</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  'use strict';
+
+  // Расписание событий в секундах игрового времени. Правь здесь после патчей.
+  var EVENTS = [
+    { id: 'bounty', name: 'Золото',             say: 'Золото',        first: 0,   interval: 240, color: 'var(--gold)' },
+    // Руны на реке: в 2:00 и 4:00 водные, с 6:00 каждые 2 минуты руны силы — одна ячейка
+    { id: 'river',  name: 'Вода / Руна',        say: 'Руна',               first: 120, interval: 120, icon: 'water', sound: 'power', color: 'var(--water)',
+      variant: function (s) {
+        return s <= 240
+          ? { name: 'Вода', say: 'Вода', icon: 'water', color: 'var(--water)' }
+          : { name: 'Руна', say: 'Руна', icon: 'power', color: 'var(--power)' };
+      } },
+    { id: 'wisdom', name: 'Опыт',               say: 'Опыт', first: 420, interval: 420, color: 'var(--wisdom)' },
+    // Торментор: первый в 20:00, следующий через 10 минут после убийства (отмечается кнопкой)
+    { id: 'tormentor', name: 'Торментор', say: 'Торментор', manual: true, first: 1200, respawn: 600, color: 'var(--torment)' }
+  ];
+
+  var ICONS = {
+    bounty: '<svg viewBox="0 0 48 48"><ellipse cx="24" cy="36" rx="15" ry="5" fill="currentColor" opacity=".4"/><ellipse cx="24" cy="31" rx="15" ry="5" fill="currentColor" opacity=".65"/><circle cx="24" cy="19" r="13" fill="currentColor"/><circle cx="24" cy="19" r="9" fill="none" stroke="var(--surface)" stroke-width="2" opacity=".6"/><path d="M24 12.5l1.9 4.2 4.6.5-3.4 3.1 1 4.5-4.1-2.4-4.1 2.4 1-4.5-3.4-3.1 4.6-.5z" fill="var(--surface)"/></svg>',
+    water:  '<svg viewBox="0 0 48 48"><path d="M24 4C24 4 10 20 10 30a14 14 0 0 0 28 0C38 20 24 4 24 4z" fill="currentColor"/><path d="M16 31q4-3.5 8 0t8 0" fill="none" stroke="var(--surface)" stroke-width="2.6" stroke-linecap="round"/><ellipse cx="18.5" cy="22" rx="2.2" ry="4" fill="var(--surface)" opacity=".55" transform="rotate(25 18.5 22)"/></svg>',
+    power:  '<svg viewBox="0 0 48 48"><path d="M24 2l20 22-20 22L4 24z" fill="currentColor" opacity=".35"/><path d="M27 7L14 27h9l-3 14 15-21h-9z" fill="currentColor"/></svg>',
+    tormentor: '<svg viewBox="0 0 48 48"><path d="M24 3l15 13-15 29L9 16z" fill="currentColor" opacity=".45"/><path d="M24 3l15 13H9z" fill="currentColor"/><path d="M24 16v29L9 16z" fill="currentColor" opacity=".75"/><circle cx="24" cy="12" r="2.6" fill="var(--surface)"/></svg>',
+    wisdom: '<svg viewBox="0 0 48 48"><path d="M3 24C9 14 16 9.5 24 9.5S39 14 45 24C39 34 32 38.5 24 38.5S9 34 3 24z" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="round"/><circle cx="24" cy="24" r="8" fill="currentColor"/><circle cx="26.8" cy="21.2" r="2.6" fill="var(--surface)"/><path d="M24 2v4M10 6l2.5 3.5M38 6l-2.5 3.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>'
+  };
+  var SUN = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></g></svg>';
+  var MOON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.5A9 9 0 0 1 9.5 3.5a9 9 0 1 0 11 11z"/></svg>';
+  var RING_C = 2 * Math.PI * 29;
+  var CYCLE = 300; // день/ночь меняются каждые 5 минут, 0:00 — начало дня
+  var STORE = 'dotaRuneTimer.v1';
+
+  var state = {
+    running: false,   // таймер запущен (идёт игра)
+    ticking: false,   // не на паузе
+    anchorGame: 0,    // игровое время в момент anchorEpoch
+    anchorEpoch: 0,
+    tormentKilled: null,
+    settings: { warn: 30, voice: true, beep: true, theme: 'auto', off: {} }
+  };
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (s && s.settings) state.settings = Object.assign(state.settings, s.settings);
+      // одноразово сбрасываем выбор голоса, чтобы по умолчанию встал мужской
+      if (!state.settings.maleV) { state.settings.maleV = 1; delete state.settings.voiceName; }
+      if (s && s.running) {
+        state.running = true; state.ticking = s.ticking;
+        state.anchorGame = s.anchorGame; state.anchorEpoch = s.anchorEpoch;
+        state.tormentKilled = s.tormentKilled == null ? null : s.tormentKilled;
+        if (gameTime() > 3 * 3600) state.running = false; // старая игра, забываем
+      }
+    } catch (e) {}
+  }
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function gameTime() {
+    return state.anchorGame + (state.ticking ? (Date.now() - state.anchorEpoch) / 1000 : 0);
+  }
+  function setGameTime(t, ticking) {
+    state.anchorGame = t; state.anchorEpoch = Date.now(); state.ticking = ticking;
+  }
+
+  function look(ev, s) {
+    var base = { name: ev.name, say: ev.say, icon: ev.icon || ev.id, sound: ev.sound || ev.id, color: ev.color };
+    return ev.variant && s != null ? Object.assign(base, ev.variant(s)) : base;
+  }
+  function nextSpawn(ev, t) {
+    if (ev.manual) return state.tormentKilled != null ? state.tormentKilled + ev.respawn : ev.first;
+    var s = t < ev.first ? ev.first
+      : ev.first + (Math.floor((t - ev.first) / ev.interval) + 1) * ev.interval;
+    if (ev.last != null && s > ev.last) return null;
+    return s;
+  }
+  function prevSpawn(ev, s) {
+    if (ev.manual) return state.tormentKilled != null ? state.tormentKilled : 0;
+    return s === ev.first ? Math.max(0, ev.first - ev.interval) : s - ev.interval;
+  }
+
+  function fmt(sec) {
+    var neg = sec < 0; sec = Math.abs(Math.floor(sec + (neg ? 0.999 : 0)));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return (neg ? '−' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function fmtLeft(sec) { return fmt(Math.ceil(sec - 0.001)); }
+
+  // ---------- Звук ----------
+  var audioCtx = null, voice = null, master = null, wet = null, noiseBuf = null;
+  function unlockAudio() {
+    try {
+      if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); setupAudio(); }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+    try {
+      if ('speechSynthesis' in window) {
+        var u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0; speechSynthesis.speak(u);
+        pickVoice();
+      }
+    } catch (e) {}
+  }
+
+  // ---------- Голос ----------
+  var GOOD_VOICE = /enhanced|premium|улучш|neural|natural|online|google/i;
+  var MALE_VOICE = /yuri|юрий|pavel|павел|dmitr|дмитрий|(^|[^e])male\b|мужск/i;
+  function ruVoices() {
+    try {
+      return speechSynthesis.getVoices().filter(function (v) { return /^ru/i.test(v.lang); });
+    } catch (e) { return []; }
+  }
+  function pickVoice() {
+    var vs = ruVoices(), want = state.settings.voiceName;
+    voice = null;
+    if (want) voice = vs.filter(function (v) { return v.name === want; })[0] || null;
+    if (!voice) {
+      // сначала мужские, среди них — улучшенные
+      var rank = function (v) { return (MALE_VOICE.test(v.name) ? 2 : 0) + (GOOD_VOICE.test(v.name) ? 1 : 0); };
+      vs = vs.slice().sort(function (a, b) { return rank(b) - rank(a); });
+      voice = vs[0] || null;
+    }
+    fillVoiceSelect();
+  }
+  if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = pickVoice;
+
+  function speak(text, force) {
+    if ((!state.settings.voice && !force) || !('speechSynthesis' in window)) return;
+    try {
+      if (!voice) pickVoice();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ru-RU'; if (voice) u.voice = voice;
+      u.rate = 1; u.pitch = 1; u.volume = 1;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+
+  // ---------- Звуки: синтез с реверберацией, файлов не нужно ----------
+  function setupAudio() {
+    var comp = audioCtx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4;
+    comp.attack.value = 0.003; comp.release.value = 0.25;
+    comp.connect(audioCtx.destination);
+    master = audioCtx.createGain(); master.gain.value = 0.9; master.connect(comp);
+    // «комната»: импульсный отклик из затухающего шума
+    var r = audioCtx.sampleRate, n = Math.floor(r * 2.2), ir = audioCtx.createBuffer(2, n, r);
+    for (var ch = 0; ch < 2; ch++) {
+      var d = ir.getChannelData(ch);
+      for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3.2);
+    }
+    var conv = audioCtx.createConvolver(); conv.buffer = ir;
+    var damp = audioCtx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 5000;
+    wet = audioCtx.createGain(); wet.gain.value = 0.5;
+    wet.connect(conv); conv.connect(damp); damp.connect(comp);
+    noiseBuf = audioCtx.createBuffer(1, r, r);
+    var nd = noiseBuf.getChannelData(0);
+    for (var j = 0; j < r; j++) nd[j] = Math.random() * 2 - 1;
+  }
+  function route(node, send) {
+    node.connect(master);
+    var g = audioCtx.createGain(); g.gain.value = send; node.connect(g); g.connect(wet);
+  }
+  // одна синусоидальная «мода» с мягкой атакой и экспоненциальным затуханием
+  function partial(t, f, start, dur, vol, send, fEnd) {
+    if (f > 15000) return;
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain(), a = t + start;
+    o.type = 'sine'; o.frequency.setValueAtTime(f, a);
+    if (fEnd) o.frequency.exponentialRampToValueAtTime(fEnd, a + dur * 0.6);
+    g.gain.setValueAtTime(0.0001, a);
+    g.gain.linearRampToValueAtTime(vol, a + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, a + dur);
+    o.connect(g); route(g, send == null ? 0.3 : send);
+    o.start(a); o.stop(a + dur + 0.05);
+  }
+  // отфильтрованный шум (шорох, всплеск, удар)
+  function noise(t, start, dur, vol, type, f1, f2, q, att, send) {
+    var src = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain(), a = t + start;
+    src.buffer = noiseBuf; src.loop = true;
+    f.type = type; f.Q.value = q;
+    f.frequency.setValueAtTime(f1, a); f.frequency.exponentialRampToValueAtTime(f2, a + dur);
+    g.gain.setValueAtTime(0.0001, a);
+    g.gain.linearRampToValueAtTime(vol, a + att);
+    g.gain.exponentialRampToValueAtTime(0.0001, a + dur);
+    src.connect(f); f.connect(g); route(g, send == null ? 0.3 : send);
+    src.start(a); src.stop(a + dur + 0.05);
+  }
+  // колокол: неравномерный набор обертонов, верхние гаснут быстрее
+  var BELL = [[0.5, 0.7], [1, 1], [1.183, 0.55], [1.506, 0.45], [2, 0.35], [2.514, 0.25], [2.662, 0.2], [3.011, 0.15], [4.166, 0.08], [5.433, 0.05]];
+  function bell(t, f0, start, vol, len, send) {
+    BELL.forEach(function (m, i) {
+      partial(t, f0 * m[0] * (1 + (Math.random() - 0.5) * 0.003), start, len / (1 + i * 0.5), vol * m[1] * 0.3, send);
+    });
+  }
+  // звон монеты
+  function clink(t, f0, start, vol) {
+    [[1, 1, 0.5], [2.32, 0.55, 0.32], [4.25, 0.35, 0.2], [6.63, 0.2, 0.12]].forEach(function (m) {
+      partial(t, f0 * m[0], start, m[2], vol * m[1], 0.25);
+    });
+    noise(t, start, 0.025, vol * 0.5, 'highpass', 7000, 7000, 0.7, 0.002, 0.1);
+  }
+  // пузырёк: короткий тон с поднимающейся высотой, как у настоящих пузырей
+  function bubble(t, start, f, vol) { partial(t, f, start, 0.1, vol, 0.4, f * 1.9); }
+  // щипок, как у калимбы
+  function pluck(t, f, start, vol) {
+    partial(t, f, start, 1.4, vol, 0.5);
+    partial(t, f * 2.01, start, 0.4, vol * 0.2, 0.5);
+    partial(t, f * 4.2, start, 0.08, vol * 0.12, 0.3);
+  }
+
+  var SOUNDS = {
+    bounty: function (t) {      // пара монет
+      clink(t, 2350, 0, 0.28); clink(t, 2720, 0.12, 0.22); clink(t, 2530, 0.21, 0.14);
+    },
+    power: function (t) {       // двойной металлический удар «клинг-кланг», как по наковальне
+      [[0, 466], [0.17, 349]].forEach(function (h, k) {
+        var st = h[0], f0 = h[1], v = k ? 0.85 : 1;
+        noise(t, st, 0.05, 0.35 * v, 'bandpass', 3200, 1800, 1.2, 0.001, 0.15);   // звонкий щелчок удара
+        noise(t, st, 0.08, 0.25 * v, 'lowpass', 900, 300, 0.8, 0.002, 0.15);      // тело удара
+        [[1, 1, 0.9], [2.756, 0.55, 0.5], [5.404, 0.28, 0.28], [8.933, 0.12, 0.14]].forEach(function (m) {
+          partial(t, f0 * m[0], st, m[2], 0.5 * m[1] * v, 0.3);
+          partial(t, (f0 + 2.5) * m[0], st + 0.003, m[2] * 0.85, 0.22 * m[1] * v, 0.3);  // биение — «металл»
+        });
+      });
+    },
+    wisdom: function (t) {      // тихое мелодичное арпеджио
+      [[784, 0], [988, 0.12], [1175, 0.24], [1568, 0.38]].forEach(function (n) { pluck(t, n[0], n[1], 0.28); });
+    },
+    tormentor: function (t) {   // храмовый колокол
+      noise(t, 0, 0.08, 0.25, 'lowpass', 900, 300, 0.7, 0.003, 0.3);
+      bell(t, 196, 0, 1.3, 3.5, 0.45);
+    }
+  };
+  var SOUND_LEN = { bounty: 700, power: 1100, wisdom: 1200, tormentor: 1300 };
+  function playSound(id) {
+    if (!audioCtx || !SOUNDS[id]) return;
+    try {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      SOUNDS[id](audioCtx.currentTime + 0.03);
+    } catch (e) {}
+  }
+  function soundOn(id) { return !(state.settings.snd && state.settings.snd[id] === false); }
+  function warnAlert(ev, s) {
+    if (!soundOn(ev.id)) return;
+    var lk = look(ev, s);
+    playSound(lk.sound);
+    var w = state.settings.warn;
+    setTimeout(function () { speak(lk.say + ' через ' + w + ' ' + secWord(w)); }, SOUND_LEN[lk.sound] || 900);
+  }
+  function spawnAlert(ev, s) {
+    if (state.settings.beep && soundOn(ev.id)) playSound(look(ev, s).sound);
+  }
+  function beep() {
+    if (!state.settings.beep || !audioCtx) return;
+    try {
+      var t0 = audioCtx.currentTime;
+      [0, 0.18].forEach(function (d) {
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.3, t0 + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.14);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t0 + d); o.stop(t0 + d + 0.16);
+      });
+    } catch (e) {}
+  }
+  function secWord(n) {
+    var a = n % 10, b = n % 100;
+    if (a === 1 && b !== 11) return 'секунду';
+    if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return 'секунды';
+    return 'секунд';
+  }
+
+  // ---------- Экран не гаснет ----------
+  var wakeLock = null;
+  function requestWake() {
+    if (!('wakeLock' in navigator) || !state.running) return;
+    navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; }).catch(function () {});
+  }
+  function releaseWake() { try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null; }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') { requestWake(); lastT = null; render(); }
+  });
+
+  // ---------- DOM ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var cards = {};
+  function buildCards() {
+    var list = $('list');
+    EVENTS.forEach(function (ev) {
+      var el = document.createElement('div');
+      el.className = 'card';
+      el.style.setProperty('--c', ev.color);
+      el.innerHTML = '<div class="emblem"><svg class="ring" viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="29"/>' +
+        '<circle class="fill" cx="32" cy="32" r="29" stroke-dasharray="' + RING_C + '" stroke-dashoffset="' + RING_C + '"/></svg>' +
+        '<div class="icon">' + ICONS[ev.icon || ev.id] + '</div></div>' +
+        '<div class="card-text"><div class="card-name"></div><div class="card-at"></div>' +
+        (ev.manual ? '<button class="kill" hidden></button>' : '') + '</div><div class="card-left"></div>';
+      el.querySelector('.card-name').textContent = ev.name;
+      cards[ev.id] = {
+        el: el, left: el.querySelector('.card-left'), at: el.querySelector('.card-at'),
+        bar: el.querySelector('.ring .fill'), name: el.querySelector('.card-name'),
+        icon: el.querySelector('.emblem .icon'), variantKey: ev.icon || ev.id, kill: el.querySelector('.kill'), justUntil: 0
+      };
+      if (ev.manual) {
+        cards[ev.id].kill.addEventListener('click', function () {
+          var t = gameTime();
+          if (nextSpawn(ev, t) <= t) state.tormentKilled = t;   // жив → отмечаем убийство
+          else state.tormentKilled = null;                      // отмена ошибочного нажатия
+          lastT = null; save(); render();
+        });
+      }
+      list.appendChild(el);
+    });
+    [['bounty', 'gold'], ['water', 'water'], ['power', 'power'], ['wisdom', 'wisdom'], ['tormentor', 'torment']].forEach(function (x) {
+      var sp = document.createElement('span');
+      sp.style.setProperty('--c', 'var(--' + x[1] + ')'); sp.innerHTML = ICONS[x[0]];
+      $('startEmblems').appendChild(sp);
+    });
+    var empty = document.createElement('div');
+    empty.className = 'empty'; empty.id = 'empty'; empty.hidden = true;
+    empty.textContent = 'Все события выключены. Включи нужные в настройках.';
+    list.appendChild(empty);
+  }
+
+  var lastOrder = '';
+  var lastDay = null;
+  var lastT = null;
+
+  function checkAlerts(t) {
+    if (lastT === null || !state.ticking) { lastT = t; return; }
+    var dt = t - lastT;
+    if (dt <= 0 || dt > 2) { lastT = t; return; } // скачок времени (подстройка) — не спамим
+    var warn = state.settings.warn;
+    EVENTS.forEach(function (ev) {
+      if (state.settings.off[ev.id]) return;
+      if (ev.manual) {
+        var ms = nextSpawn(ev, t);
+        if (ms - warn > lastT && ms - warn <= t && ms - warn > 0) warnAlert(ev, ms);
+        if (ms > lastT && ms <= t) { spawnAlert(ev, ms); cards[ev.id].justUntil = t + 5; }
+        return;
+      }
+      var w = nextSpawn(ev, lastT + warn);
+      if (w !== null && w <= t + warn && w - warn > 0) warnAlert(ev, w);
+      var s = nextSpawn(ev, lastT);
+      if (s !== null && s <= t) { spawnAlert(ev, s); cards[ev.id].justUntil = t + 5; }
+    });
+    lastT = t;
+  }
+
+  function pop(el, cls) {
+    el.classList.remove('pop-soon', 'pop-urgent', 'pop-spawn');
+    void el.offsetWidth; // перезапуск анимации
+    el.classList.add(cls);
+  }
+
+  // Название не влезает → сначала чуть уменьшаем его, потом цифры таймера, и только потом снова название
+  function fitName(e, left) {
+    e.style.fontSize = ''; left.style.fontSize = '';
+    if (!e.clientWidth) return false;
+    var over = function () { return e.scrollWidth > e.clientWidth; };
+    var fs = parseFloat(getComputedStyle(e).fontSize), lf = parseFloat(getComputedStyle(left).fontSize);
+    while (over() && fs > 20) { fs -= 1; e.style.fontSize = fs + 'px'; }
+    while (over() && lf > 28) { lf -= 1; left.style.fontSize = lf + 'px'; }
+    while (over() && fs > 14) { fs -= 1; e.style.fontSize = fs + 'px'; }
+    return true;
+  }
+  window.addEventListener('resize', function () { render(); });
+  function render() {
+    if (!state.running) return;
+    var t = gameTime();
+    checkAlerts(t);
+
+    var clock = $('clock');
+    clock.textContent = fmt(t);
+    clock.classList.toggle('paused', !state.ticking);
+    var pb = $('pauseBtn');
+    pb.innerHTML = state.ticking
+      ? '<svg viewBox="0 0 20 20" fill="currentColor"><rect x="4" y="3" width="4.5" height="14" rx="1"/><rect x="11.5" y="3" width="4.5" height="14" rx="1"/></svg>'
+      : '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3l12 7-12 7z"/></svg>';
+    pb.setAttribute('aria-label', state.ticking ? 'Пауза' : 'Продолжить');
+
+    // день / ночь
+    var isDay = t >= 0 && Math.floor(t / CYCLE) % 2 === 0;
+    var phaseStart = t < 0 ? -CYCLE : Math.floor(t / CYCLE) * CYCLE;
+    var switchAt = t < 0 ? 0 : phaseStart + CYCLE;
+    if (isDay !== lastDay) {
+      $('cycleName').innerHTML = (isDay ? SUN : MOON) + '<span>' + (isDay ? 'День' : 'Ночь') + '</span>';
+      document.documentElement.classList.toggle('is-day', isDay);
+      document.documentElement.classList.toggle('is-night', !isDay);
+      lastDay = isDay;
+    }
+    $('cycleNext').textContent = (isDay ? 'ночь' : 'день') + ' через ' + fmtLeft(switchAt - t);
+    var strip = $('strip');
+    strip.classList.toggle('night', !isDay);
+    strip.firstElementChild.style.width = Math.min(100, Math.max(0, (t - phaseStart) / CYCLE * 100)) + '%';
+
+    // карточки
+    var warn = state.settings.warn;
+    var visible = [];
+    EVENTS.forEach(function (ev) {
+      var c = cards[ev.id];
+      var s = nextSpawn(ev, t);
+      var hide = state.settings.off[ev.id] || s === null;
+      c.el.hidden = hide;
+      if (hide) return;
+      if (ev.variant) {
+        var lk = look(ev, s);
+        if (lk.icon !== c.variantKey) {
+          c.variantKey = lk.icon;
+          c.name.textContent = lk.name;
+          c.icon.innerHTML = ICONS[lk.icon];
+          c.el.style.setProperty('--c', lk.color);
+        } else if (c.name.textContent !== lk.name) c.name.textContent = lk.name;
+      }
+      var left = s - t, p = prevSpawn(ev, s);
+      var just = c.justUntil > t && c.justUntil - t <= 5;
+      if (ev.manual) {
+        var alive = left <= 0;
+        c.left.textContent = alive ? 'Жив' : fmtLeft(left);
+        c.left.classList.toggle('alive', alive);
+        c.at.textContent = alive ? 'Отметь, когда его убьют' : 'в ' + fmt(s);
+        c.kill.hidden = !alive && state.tormentKilled == null;
+        c.kill.textContent = alive ? 'Убит' : 'Отменить';
+        c.kill.classList.toggle('ghost', !alive);
+        if (alive) { just = just && true; left = 1e9; }
+      } else {
+        c.left.textContent = fmtLeft(left);
+        var justText = 'Появилась! Следующая в ' + fmt(s);
+        if (ev.variant) {
+          var prevLk = look(ev, s - ev.interval);
+          if (prevLk.name !== look(ev, s).name) justText = prevLk.name + ' появилась! Дальше в ' + fmt(s);
+        }
+        c.at.textContent = just ? justText : 'в ' + fmt(s);
+      }
+      c.bar.style.strokeDashoffset = String(RING_C * (1 - Math.min(1, Math.max(0, (t - p) / (s - p)))));
+      c.el.classList.toggle('just', just);
+      c.el.classList.toggle('urgent', !just && left <= 10);
+      c.el.classList.toggle('soon', !just && left > 10 && left <= warn);
+      var txt = c.left.textContent;
+      if (c.lastText !== undefined && txt !== c.lastText && state.ticking) {
+        if (just && !c.spawnPopped) { pop(c.left, 'pop-spawn'); c.spawnPopped = true; }
+        else if (!just && left <= 10) pop(c.left, 'pop-urgent');
+        else if (!just && left <= warn) pop(c.left, 'pop-soon');
+      }
+      if (!just) c.spawnPopped = false;
+      c.lastText = txt;
+      // уменьшаем шрифт названия, только если оно не влезает (длинное слово + широкое время)
+      var fitKey = c.name.textContent + '|' + txt.length + '|' + window.innerWidth + '|' + c.el.hidden;
+      if (fitKey !== c.fitKey && fitName(c.name, c.left)) c.fitKey = fitKey;
+      visible.push({ id: ev.id, s: left > 1e8 ? 1e12 : s });
+    });
+    $('empty').hidden = visible.length > 0;
+
+    visible.sort(function (a, b) { return a.s - b.s; });
+    var order = visible.map(function (v) { return v.id; }).join(',');
+    if (order !== lastOrder) {
+      var list = $('list');
+      visible.forEach(function (v) { list.insertBefore(cards[v.id].el, $('empty')); });
+      lastOrder = order;
+    }
+  }
+
+  function showScreen() {
+    $('startScreen').hidden = state.running;
+    $('runScreen').hidden = !state.running;
+  }
+
+  function start(fromSec) {
+    unlockAudio();
+    state.running = true;
+    setGameTime(fromSec, true);
+    lastT = null; lastOrder = '';
+    state.tormentKilled = null;
+    EVENTS.forEach(function (ev) { cards[ev.id].justUntil = 0; });
+    save(); showScreen(); requestWake(); render();
+  }
+
+  // ---------- События интерфейса ----------
+  $('startBtn').addEventListener('click', function () { start(0); });
+  $('lateBtn').addEventListener('click', function () {
+    var v = $('lateInput').value.trim().replace(/[.,\s]/g, ':');
+    var m = v.match(/^(\d{1,3})(?::(\d{1,2}))?$/);
+    if (!m) { $('lateInput').focus(); $('lateInput').value = ''; $('lateInput').placeholder = 'мм:сс'; return; }
+    start(parseInt(m[1], 10) * 60 + (m[2] ? parseInt(m[2], 10) : 0));
+  });
+
+  document.querySelectorAll('[data-adj]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      setGameTime(gameTime() + parseInt(b.getAttribute('data-adj'), 10), state.ticking);
+      lastT = null; save(); render();
+    });
+  });
+  $('pauseBtn').addEventListener('click', function () {
+    unlockAudio();
+    setGameTime(gameTime(), !state.ticking);
+    lastT = null; save(); render();
+  });
+  var confirmDlg = $('confirmDlg');
+  function openDlg(d) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
+  function closeDlg(d) { if (d.close) d.close(); else d.removeAttribute('open'); }
+  $('resetBtn').addEventListener('click', function () { openDlg(confirmDlg); });
+  $('confirmNo').addEventListener('click', function () { closeDlg(confirmDlg); });
+  $('confirmYes').addEventListener('click', function () {
+    closeDlg(confirmDlg);
+    state.running = false; state.ticking = false; state.tormentKilled = null;
+    releaseWake(); save(); showScreen();
+  });
+
+  // настройки
+  var dlg = $('settings');
+  function applyTheme() {
+    var th = state.settings.theme;
+    if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th);
+    else document.documentElement.removeAttribute('data-theme');
+  }
+  function fillVoiceSelect() {
+    var sel = document.getElementById('voiceSel');
+    if (!sel) return;
+    var vs = ruVoices();
+    sel.innerHTML = '';
+    var o0 = document.createElement('option'); o0.value = '';
+    o0.textContent = 'Автовыбор' + (voice && !state.settings.voiceName ? ': ' + voice.name : '');
+    sel.appendChild(o0);
+    vs.forEach(function (v) {
+      var o = document.createElement('option'); o.value = v.name;
+      o.textContent = v.name + (MALE_VOICE.test(v.name) ? ' ♂' : '') + (GOOD_VOICE.test(v.name) ? ' ★' : '');
+      sel.appendChild(o);
+    });
+    sel.value = state.settings.voiceName || '';
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    document.getElementById('voiceHint').textContent = vs.length === 0
+      ? 'Русские голоса не найдены. Установи русский голос в настройках синтеза речи телефона.'
+      : ios
+        ? '♂ — мужской голос, ★ — улучшенный. Если Юрия нет в списке: Настройки → Универсальный доступ → Устный контент → Голоса → Русский → Юрий (улучшенный), затем перезапусти приложение.'
+        : '♂ — мужской голос, ★ — улучшенный. На Android мужской голос выбирается в системе: Настройки → Спец. возможности → Синтез речи → Google → русский → выбери мужской вариант.';
+  }
+  $('voiceSel').addEventListener('change', function () {
+    state.settings.voiceName = $('voiceSel').value; save(); pickVoice();
+    unlockAudio(); speak('Руна через тридцать секунд', true);
+  });
+  $('voiceTest').addEventListener('click', function () {
+    unlockAudio(); speechSynthesis.cancel(); speak('Руна через тридцать секунд', true);
+  });
+  function syncSettingsUI() {
+    pickVoice();
+    document.querySelectorAll('#themeSeg button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-t') === (state.settings.theme || 'auto')));
+    });
+    document.querySelectorAll('#warnSeg button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(parseInt(b.getAttribute('data-w'), 10) === state.settings.warn));
+    });
+    $('optVoice').checked = state.settings.voice;
+    $('optBeep').checked = state.settings.beep;
+    EVENTS.forEach(function (ev) {
+      $('ev-' + ev.id).checked = !state.settings.off[ev.id];
+      $('snd-' + ev.id).checked = soundOn(ev.id);
+    });
+    $('sndTitle').textContent = 'Оповещения за ' + state.settings.warn + ' ' + secWord(state.settings.warn);
+  }
+  var PLAY = '<svg viewBox="0 0 14 14" fill="currentColor"><path d="M3 1.5l9 5.5-9 5.5z"/></svg>';
+  EVENTS.forEach(function (ev) {
+    var row = document.createElement('div'); row.className = 'snd-row';
+    row.style.setProperty('--c', ev.color);
+    row.innerHTML = '<span class="mini" aria-hidden="true">' + ICONS[ev.icon || ev.id] + '</span>' +
+      '<label for="snd-' + ev.id + '"></label>' +
+      '<button class="play" aria-label="Прослушать звук">' + PLAY + '</button>' +
+      '<input type="checkbox" id="snd-' + ev.id + '">';
+    row.querySelector('label').textContent = ev.name;
+    function preview() {
+      unlockAudio();
+      playSound(ev.sound || ev.id);
+    }
+    row.querySelector('.play').addEventListener('click', preview);
+    var cb = row.querySelector('input');
+    cb.addEventListener('change', function () {
+      if (!state.settings.snd) state.settings.snd = {};
+      state.settings.snd[ev.id] = cb.checked; save();
+      if (cb.checked) preview();
+    });
+    $('sndToggles').appendChild(row);
+  });
+  EVENTS.forEach(function (ev) {
+    var l = document.createElement('label'); l.className = 'row';
+    l.textContent = ev.name;
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.id = 'ev-' + ev.id;
+    cb.addEventListener('change', function () { state.settings.off[ev.id] = !cb.checked; save(); render(); });
+    l.appendChild(cb); $('evToggles').appendChild(l);
+  });
+  document.querySelectorAll('#themeSeg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.settings.theme = b.getAttribute('data-t'); applyTheme(); save(); syncSettingsUI();
+    });
+  });
+  document.querySelectorAll('#warnSeg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.settings.warn = parseInt(b.getAttribute('data-w'), 10); save(); syncSettingsUI(); render();
+    });
+  });
+  [['optVoice', 'voice'], ['optBeep', 'beep']].forEach(function (p) {
+    $(p[0]).addEventListener('change', function () {
+      state.settings[p[1]] = $(p[0]).checked; save();
+      if (p[1] === 'voice' && state.settings.voice) { unlockAudio(); speak('Голос включён'); }
+    });
+  });
+  $('settingsBtn').addEventListener('click', function () {
+    syncSettingsUI();
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+  });
+  $('closeSettings').addEventListener('click', function () {
+    if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
+  });
+
+  document.addEventListener('pointerdown', function once() {
+    unlockAudio(); document.removeEventListener('pointerdown', once);
+  });
+
+  // ---------- Запуск ----------
+  load();
+  applyTheme();
+  buildCards();
+  showScreen();
+  if (state.running) { requestWake(); render(); }
+  setInterval(render, 200);
+
+  // офлайн-режим и установка на домашний экран
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>
